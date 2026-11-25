@@ -18,12 +18,16 @@ import {
   ArrowUpRight,
   Bell,
   Cloud,
+  Copy,
+  Edit3,
   Flame,
   Heart,
   LogIn,
   LogOut,
   MapPin,
+  MoreVertical,
   Search,
+  Share2,
   ShoppingCart,
   SlidersHorizontal,
   Store as StoreIcon,
@@ -223,6 +227,7 @@ export default function App() {
   const [compareProductId, setCompareProductId] = useState<string | null>(null);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [mostSearchedModalOpen, setMostSearchedModalOpen] = useState(false);
+  const [activeCardMenuId, setActiveCardMenuId] = useState<string | null>(null);
   const [submitInitialProductId, setSubmitInitialProductId] = useState<string | undefined>(undefined);
   const [submitInitialStoreId, setSubmitInitialStoreId] = useState<string | undefined>(undefined);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(
@@ -596,6 +601,85 @@ export default function App() {
   const handleSignOut = async () => {
     await signOutUser();
     showToast('Sessão encerrada.');
+  };
+
+  const handleCopyAddress = (store?: Store) => {
+    if (!store) {
+      showToast('Nenhum estabelecimento cadastrado para este produto ainda.');
+      return;
+    }
+    const addr = `${store.name} · ${store.street}, ${store.neighborhood} - ${store.city}`;
+    navigator.clipboard
+      .writeText(addr)
+      .then(() => {
+        showToast('Endereço copiado para a área de transferência.');
+      })
+      .catch(() => {
+        showToast('Não foi possível copiar o endereço.');
+      });
+  };
+
+  const handleShareAddress = async (store?: Store) => {
+    if (!store) {
+      showToast('Nenhum estabelecimento cadastrado para este produto ainda.');
+      return;
+    }
+    const addr = `${store.name} · ${store.street}, ${store.neighborhood} - ${store.city}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Endereço do Estabelecimento - Cesta Justa',
+          text: addr,
+        });
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    navigator.clipboard.writeText(addr);
+    showToast('Endereço copiado para compartilhamento.');
+  };
+
+  const handleCopyProductAndPrice = (product: Product, lowest?: { entry: PriceEntry; store: Store } | null) => {
+    const priceText = lowest ? formatBRL(lowest.entry.price) : 'Sem preço';
+    const storeText = lowest ? ` em ${lowest.store.name} (${lowest.store.neighborhood})` : '';
+    const text = `${product.name} (${product.unit} · ${product.brand}): ${priceText}${storeText} — Cesta Justa`;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        showToast('Produto e valor copiados para a área de transferência.');
+      })
+      .catch(() => {
+        showToast('Não foi possível copiar.');
+      });
+  };
+
+  const handleShareProductAndPrice = async (product: Product, lowest?: { entry: PriceEntry; store: Store } | null) => {
+    const priceText = lowest ? formatBRL(lowest.entry.price) : 'Sem preço';
+    const storeText = lowest ? ` em ${lowest.store.name} (${lowest.store.neighborhood})` : '';
+    const text = `${product.name} (${product.unit} · ${product.brand}): ${priceText}${storeText} — Cesta Justa`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: product.name,
+          text,
+        });
+        return;
+      } catch {
+        // Fallback
+      }
+    }
+    navigator.clipboard.writeText(text);
+    showToast('Informações copiadas para compartilhamento.');
+  };
+
+  const handleEditPrice = (product: Product, lowest?: { entry: PriceEntry; store: Store } | null) => {
+    if (!user) {
+      showToast('Para editar o valor, faça login com sua Conta Google.');
+      handleSignIn();
+      return;
+    }
+    openSubmitModal(product.id, lowest?.store?.id);
   };
 
   const handleSubmitPrice = async (payload: {
@@ -1239,6 +1323,91 @@ export default function App() {
                             >
                               <ShoppingCart className="w-4 h-4" aria-hidden="true" />
                             </button>
+
+                            {/* Card Actions Menu */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setActiveCardMenuId(activeCardMenuId === product.id ? null : product.id)}
+                                aria-label="Mais opções do produto"
+                                className="p-2 rounded-lg text-[#526058] hover:text-[#111815] hover:bg-[#F2F4F3] transition-colors cursor-pointer"
+                              >
+                                <MoreVertical className="w-4 h-4" aria-hidden="true" />
+                              </button>
+
+                              {activeCardMenuId === product.id && (
+                                <div className="absolute right-0 mt-1.5 w-60 bg-white border border-[#E2E7E4] rounded-xl shadow-lg z-30 py-1.5 text-xs text-[#111815]">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCardMenuId(null);
+                                      if (lowest?.store) handleRequestMapAction(lowest.store.id);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 hover:bg-[#F2F4F3] flex items-center gap-2.5 cursor-pointer"
+                                  >
+                                    <MapPin className="w-4 h-4 text-[#15803D] shrink-0" aria-hidden="true" />
+                                    <span>Abrir no mapa</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCardMenuId(null);
+                                      handleCopyAddress(lowest?.store);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 hover:bg-[#F2F4F3] flex items-center gap-2.5 cursor-pointer"
+                                  >
+                                    <Copy className="w-4 h-4 text-[#526058] shrink-0" aria-hidden="true" />
+                                    <span>Copiar endereço</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCardMenuId(null);
+                                      handleShareAddress(lowest?.store);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 hover:bg-[#F2F4F3] flex items-center gap-2.5 cursor-pointer"
+                                  >
+                                    <Share2 className="w-4 h-4 text-[#526058] shrink-0" aria-hidden="true" />
+                                    <span>Compartilhar endereço</span>
+                                  </button>
+                                  <div className="my-1 border-t border-[#E2E7E4]" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCardMenuId(null);
+                                      handleCopyProductAndPrice(product, lowest);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 hover:bg-[#F2F4F3] flex items-center gap-2.5 cursor-pointer"
+                                  >
+                                    <Copy className="w-4 h-4 text-[#526058] shrink-0" aria-hidden="true" />
+                                    <span>Copiar produto e valor</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCardMenuId(null);
+                                      handleShareProductAndPrice(product, lowest);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 hover:bg-[#F2F4F3] flex items-center gap-2.5 cursor-pointer"
+                                  >
+                                    <Share2 className="w-4 h-4 text-[#526058] shrink-0" aria-hidden="true" />
+                                    <span>Compartilhar produto e valor</span>
+                                  </button>
+                                  <div className="my-1 border-t border-[#E2E7E4]" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveCardMenuId(null);
+                                      handleEditPrice(product, lowest);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 hover:bg-[#F2F4F3] flex items-center gap-2.5 text-[#15803D] font-medium cursor-pointer"
+                                  >
+                                    <Edit3 className="w-4 h-4 shrink-0" aria-hidden="true" />
+                                    <span>Editar o valor (solicita login)</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
 
