@@ -1,0 +1,6 @@
+{
+  "name": "Cesta Justa",
+  "description": "Comparador colaborativo em tempo real de preços da cesta básica em supermercados e mercadinhos, com gráficos semanais e mensais, listas de compras inteligentes na nuvem, alertas de menor preço e mapa integrado por rua e bairro.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,342 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection check document (no sensitive data)
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidStore(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'type', 'street', 'neighborhood', 'city', 'lat', 'lng', 'hours', 'createdBy', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'name', 'type', 'street', 'neighborhood', 'city', 'lat', 'lng', 'hours', 'createdBy', 'createdAt'
+      ])
+      && isValidId(data.id)
+      && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+      && data.type in ['supermercado', 'mercadinho', 'atacarejo', 'hortifruti']
+      && data.street is string && data.street.size() >= 3 && data.street.size() <= 120
+      && data.neighborhood is string && data.neighborhood.size() >= 2 && data.neighborhood.size() <= 80
+      && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+      && data.lat is number && data.lat >= -90 && data.lat <= 90
+      && data.lng is number && data.lng >= -180 && data.lng <= 180
+      && data.hours is string && data.hours.size() >= 2 && data.hours.size() <= 60
+      && isValidId(data.createdBy)
+      && data.createdAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+        'id', 'name', 'category', 'unit', 'brand', 'isEssentialBasket', 'referencePrice', 'createdBy', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'name', 'category', 'unit', 'brand', 'isEssentialBasket', 'referencePrice', 'createdBy', 'createdAt'
+      ])
+      && isValidId(data.id)
+      && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+      && data.category in ['grãos', 'laticínios', 'carnes', 'hortifruti', 'padaria', 'limpeza', 'bebidas', 'óleo_açúcar']
+      && data.unit is string && data.unit.size() >= 1 && data.unit.size() <= 20
+      && data.brand is string && data.brand.size() <= 60
+      && data.isEssentialBasket is bool
+      && data.referencePrice is number && data.referencePrice > 0 && data.referencePrice <= 10000
+      && isValidId(data.createdBy)
+      && data.createdAt is timestamp;
+    }
+
+    function isValidPriceEntry(data) {
+      return data.keys().hasAll([
+        'id', 'productId', 'storeId', 'price', 'isPromo', 'promoLabel', 'inStock', 'reportedBy', 'reporterName', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'productId', 'storeId', 'price', 'isPromo', 'promoLabel', 'inStock', 'reportedBy', 'reporterName', 'createdAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.productId)
+      && isValidId(data.storeId)
+      && data.price is number && data.price > 0 && data.price <= 10000
+      && data.isPromo is bool
+      && data.promoLabel is string && data.promoLabel.size() <= 60
+      && data.inStock is bool
+      && isValidId(data.reportedBy)
+      && data.reporterName is string && data.reporterName.size() >= 1 && data.reporterName.size() <= 60
+      && data.createdAt is timestamp;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'city', 'neighborhood', 'createdAt'])
+      && data.keys().hasOnly(['uid', 'displayName', 'city', 'neighborhood', 'createdAt'])
+      && isValidId(data.uid)
+      && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60
+      && data.city is string && data.city.size() >= 1 && data.city.size() <= 80
+      && data.neighborhood is string && data.neighborhood.size() <= 80
+      && data.createdAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['email', 'updatedAt'])
+      && data.keys().hasOnly(['email', 'updatedAt'])
+      && data.email is string && data.email.size() >= 3 && data.email.size() <= 120
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidShoppingList(data) {
+      return data.keys().hasAll(['id', 'userId', 'name', 'neighborhoodFilter', 'items', 'createdAt', 'updatedAt'])
+      && data.keys().hasOnly(['id', 'userId', 'name', 'neighborhoodFilter', 'items', 'createdAt', 'updatedAt'])
+      && isValidId(data.id)
+      && isValidId(data.userId)
+      && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+      && data.neighborhoodFilter is string && data.neighborhoodFilter.size() <= 80
+      && data.items is list && data.items.size() <= 50
+      && (data.items.size() == 0 || (
+        data.items[0] is map
+        && data.items[0].keys().hasAll(['productId', 'productName', 'quantity', 'checked', 'targetPrice'])
+        && data.items[0].keys().hasOnly(['productId', 'productName', 'quantity', 'checked', 'targetPrice'])
+        && isValidId(data.items[0].productId)
+        && data.items[0].productName is string && data.items[0].productName.size() <= 100
+        && data.items[0].quantity is number && data.items[0].quantity >= 1 && data.items[0].quantity <= 999
+        && data.items[0].checked is bool
+        && data.items[0].targetPrice is number && data.items[0].targetPrice >= 0 && data.items[0].targetPrice <= 10000
+      ))
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidFavorite(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'productId', 'desiredMaxPrice', 'notifyOnPromo', 'notifyOnLowest', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'userId', 'productId', 'desiredMaxPrice', 'notifyOnPromo', 'notifyOnLowest', 'createdAt', 'updatedAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.userId)
+      && isValidId(data.productId)
+      && data.desiredMaxPrice is number && data.desiredMaxPrice > 0 && data.desiredMaxPrice <= 10000
+      && data.notifyOnPromo is bool
+      && data.notifyOnLowest is bool
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidSavingsLog(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'monthKey', 'storeId', 'storeName', 'paidTotal', 'averageMarketTotal', 'savedAmount', 'itemsCount', 'createdAt'
+      ])
+      && data.keys().hasOnly([
+        'id', 'userId', 'monthKey', 'storeId', 'storeName', 'paidTotal', 'averageMarketTotal', 'savedAmount', 'itemsCount', 'createdAt'
+      ])
+      && isValidId(data.id)
+      && isValidId(data.userId)
+      && data.monthKey is string && data.monthKey.size() == 7 && data.monthKey.matches('^[0-9]{4}-[0-9]{2}$')
+      && isValidId(data.storeId)
+      && data.storeName is string && data.storeName.size() >= 1 && data.storeName.size() <= 100
+      && data.paidTotal is number && data.paidTotal >= 0 && data.paidTotal <= 100000
+      && data.averageMarketTotal is number && data.averageMarketTotal >= 0 && data.averageMarketTotal <= 100000
+      && data.savedAmount is number && data.savedAmount >= 0 && data.savedAmount <= 100000
+      && data.itemsCount is number && data.itemsCount >= 1 && data.itemsCount <= 200
+      && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Public catalog of stores (supermercados e mercadinhos), no PII
+    match /stores/{storeId} {
+      allow get: if isValidId(storeId);
+      allow list: if resource.data.id is string;
+      allow create: if isVerified()
+        && isValidId(storeId)
+        && isValidStore(incoming())
+        && incoming().id == storeId
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if isVerified()
+        && isValidId(storeId)
+        && isValidStore(incoming())
+        && existing().createdBy == request.auth.uid
+        && incoming().id == existing().id
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'type', 'street', 'neighborhood', 'city', 'lat', 'lng', 'hours']);
+      allow delete: if false;
+    }
+
+    // Public catalog of products (cesta básica), no PII
+    match /products/{productId} {
+      allow get: if isValidId(productId);
+      allow list: if resource.data.id is string;
+      allow create: if isVerified()
+        && isValidId(productId)
+        && isValidProduct(incoming())
+        && incoming().id == productId
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if isVerified()
+        && isValidId(productId)
+        && isValidProduct(incoming())
+        && existing().createdBy == request.auth.uid
+        && incoming().id == existing().id
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'unit', 'brand', 'isEssentialBasket', 'referencePrice']);
+      allow delete: if false;
+    }
+
+    // Public collaborative price entries, no PII
+    match /priceEntries/{entryId} {
+      allow get: if isValidId(entryId);
+      allow list: if resource.data.id is string;
+      allow create: if isVerified()
+        && isValidId(entryId)
+        && isValidPriceEntry(incoming())
+        && incoming().id == entryId
+        && incoming().reportedBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/products/$(incoming().productId))
+        && exists(/databases/$(database)/documents/stores/$(incoming().storeId));
+      allow update: if false;
+      allow delete: if isVerified()
+        && isValidId(entryId)
+        && existing().reportedBy == request.auth.uid;
+    }
+
+    // User profile (restricted to owner)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isVerified()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time;
+      allow update: if isVerified()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'city', 'neighborhood']);
+      allow delete: if false;
+
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && isOwner(userId);
+        allow list: if false;
+        allow create: if isVerified()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().updatedAt == request.time;
+        allow update: if isVerified()
+          && isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && isValidUserPrivateInfo(incoming())
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt']);
+        allow delete: if false;
+      }
+    }
+
+    // Cloud-synced smart shopping lists (strict owner isolation)
+    match /shoppingLists/{listId} {
+      allow get: if isValidId(listId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(listId)
+        && isValidShoppingList(incoming())
+        && incoming().id == listId
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(listId)
+        && isValidShoppingList(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'neighborhoodFilter', 'items', 'updatedAt']);
+      allow delete: if isVerified()
+        && isValidId(listId)
+        && existing().userId == request.auth.uid;
+    }
+
+    // Favorites & desired price alerts (strict owner isolation)
+    match /favorites/{favId} {
+      allow get: if isValidId(favId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(favId)
+        && isValidFavorite(incoming())
+        && incoming().id == favId
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(favId)
+        && isValidFavorite(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().productId == existing().productId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['desiredMaxPrice', 'notifyOnPromo', 'notifyOnLowest', 'updatedAt']);
+      allow delete: if isVerified()
+        && isValidId(favId)
+        && existing().userId == request.auth.uid;
+    }
+
+    // Monthly savings logs (strict owner isolation)
+    match /savingsLogs/{logId} {
+      allow get: if isValidId(logId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(logId)
+        && isValidSavingsLog(incoming())
+        && incoming().id == logId
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isVerified()
+        && isValidId(logId)
+        && existing().userId == request.auth.uid;
+    }
+  }
+}
